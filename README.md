@@ -1,7 +1,7 @@
 scotlandjs-2015
 =============
 
-"Getting started with three.js and WebGL"
+#Getting started with three.js and WebGL#
 WebGL shaders and GPU computing presentation for ScotlandJS 2015
 
 About
