@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<title>ScotlandJS 2015</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link href='http://fonts.googleapis.com/css?family=Roboto+Slab:400,700,300,100' rel='stylesheet' type='text/css'>
+		<style>
+			*{
+				box-sizing: border-box;
+				font-family: 'Roboto Slab', sans-serif;
+				font-size: 13px;
+				font-weight: 100;
+				margin :0;
+				padding: 0;
+			}
+			html {
+				height: 100%;
+			}
+			body {
+				margin: 0;
+				padding: 0;
+				background-color: #000000;
+				color: #ffffff;
+				line-height: 20px;
+				height: 100%;
+				overflow: hidden;
+				font-family: 'Roboto Slab', sans-serif;
+				font-size: 13px;
+				font-weight: 100;
+			}
+			#container {
+				position: absolute;
+				left: 0;
+				top: 0;
+				right: 0;
+				bottom: 0;
+			}
+			textarea{ position: absolute; left: 0; top: 50px; right: 50%; bottom: 0; width: 50%; padding: 20px; height: calc( 100% - 50px );}
+			#output{ position: absolute;left: 50%; right: 0; top: 50px; bottom: 0; padding: 20px; overflow: auto;}
+			#executeBtn{ position: absolute; left: 15px; top: 15px;}
+		</style>
+	</head>
+	<body>
+
+		<textarea id="codeInput" ></textarea>
+
+		<input type="button" id="executeBtn" value="Run" />
+		<div id="output" ></div>
+
+		<script src="js/three.min.js"></script>
+		<script src="js/AugmentedCompileShader.js"></script>
+
+<script id="vertexShader" type="x-vertex-shader">
+
+precision highp float;
+precision highp int;
+
+uniform mat4 modelViewMatrix; // optional
+uniform mat4 projectionMatrix; // optional
+
+attribute vec3 position;
+
+void main() {
+	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+</script>
+
+<script id="fragmentShader" type="x-fragment-shader">
+
+precision highp float;
+precision highp int;
+
+uniform sampler2D tInput;
+uniform float size;
+
+float shift_right (float v, float amt) { 
+    v = floor(v) + 0.5; 
+    return floor(v / exp2(amt)); 
+}
+
+float shift_left (float v, float amt) { 
+    return floor(v * exp2(amt) + 0.5); 
+}
+
+float mask_last (float v, float bits) { 
+    return mod(v, shift_left(1.0, bits)); 
+}
+
+float extract_bits (float num, float from, float to) { 
+    from = floor(from + 0.5); to = floor(to + 0.5); 
+    return mask_last(shift_right(num, from), to - from); 
+}
+
+vec4 encode_float (float val) { 
+    if (val == 0.0) return vec4(0, 0, 0, 0); 
+    float sign = val > 0.0 ? 0.0 : 1.0; 
+    val = abs(val); 
+    float exponent = floor(log2(val)); 
+    float biased_exponent = exponent + 127.0; 
+    float fraction = ((val / exp2(exponent)) - 1.0) * 8388608.0; 
+    float t = biased_exponent / 2.0; 
+    float last_bit_of_biased_exponent = fract(t) * 2.0; 
+    float remaining_bits_of_biased_exponent = floor(t); 
+    float byte4 = extract_bits(fraction, 0.0, 8.0) / 255.0; 
+    float byte3 = extract_bits(fraction, 8.0, 16.0) / 255.0; 
+    float byte2 = (last_bit_of_biased_exponent * 128.0 + extract_bits(fraction, 16.0, 23.0)) / 255.0; 
+    float byte1 = (sign * 128.0 + remaining_bits_of_biased_exponent) / 255.0; 
+    return vec4(byte4, byte3, byte2, byte1); 
+}
+
+float decode_float( vec4 val ) {
+
+	float sign = ( val.a * 255. / pow( 2., 7. ) ) >= 1. ? -1. : 1.;
+	float s = val.a * 255.;
+	if( s > 128. ) s -= 128.;
+	float exponent = s * 2. + floor( val.b * 255. / pow( 2., 7. ) );
+	float mantissa = ( val.r * 255. + val.g * 255. * 256. + clamp( val.b * 255. - 128., 0., 255. ) * 256. * 256. );
+	float t = val.b * 255.;
+	if( t > 128. ) t -= 128.;
+	mantissa = t * 256. * 256. + val.g * 255. * 256. + val.r * 255.;
+
+	return sign * pow( 2., exponent - 127. ) * ( 1. + mantissa / pow ( 2., 23. ) );
+
+}
+
+// EVAL FUNCTION GOES HERE
+
+void main() {
+
+	vec2 uv = gl_FragCoord.xy / size;
+	uv.y = 1. - uv.y;
+	vec4 v = texture2D( tInput, uv );
+	float val = decode_float( v );
+	float res = f( val );
+
+	gl_FragColor = encode_float( res );
+
+}
+
+</script>
+<script>
+
+var camera,
+	scene, 
+	renderer;
+	
+var progress = document.getElementById( 'progress' ),
+	message = document.getElementById( 'message' );
+
+var links = document.querySelectorAll( 'a[rel=external]' );
+for( var j = 0; j < links.length; j++ ) {
+	var a = links[ j ];
+	a.addEventListener( 'click', function( e ) {
+		window.open( this.href, '_blank' );
+		e.preventDefault();
+	}, false );
+}
+
+window.addEventListener( 'load', init );
+
+var s = 4096;
+
+function getImageData(image) {
+	
+	var canvas = document.createElement('canvas');
+	canvas.width = image.width;
+	canvas.height = image.height;
+	var context = canvas.getContext('2d');
+	context.drawImage(image, 0, 0);
+	return context.getImageData(0, 0, image.width, image.height);
+
+}
+
+function createRT( w, h ) {
+
+	var renderTarget = new THREE.WebGLRenderTarget( w, h, {
+		wrapS: THREE.ClampToEdgeWrapping,
+		wrapT: THREE.ClampToEdgeWrapping,
+		minFilter: THREE.NearestFilter,
+		magFilter: THREE.NearestFilter,
+		format: THREE.RGBAFormat,
+		type: THREE.UnsignedByteType,
+		stencilBuffer: false,
+		depthBuffer: false
+	} );
+	renderTarget.generateMipmaps = false;
+
+	return renderTarget;
+
+}
+
+var vsSource = document.getElementById( 'vertexShader' ).textContent,
+	fsSource = document.getElementById( 'fragmentShader' ).textContent;
+
+var renderer = new THREE.WebGLRenderer( { antialias: false, alpha: true, precision: 'highp', premultipliedAlpha: true });
+renderer.setPixelRatio( 1 );
+var camera = new THREE.OrthographicCamera( 1, 1, 1, 1, -10000, 10000 );
+
+var quad;
+window.addEventListener( 'resize', onWindowResize );
+onWindowResize();
+
+function ArrayGPUMap( buffer, f ) {
+
+	console.time( 'setup' );
+
+//	container.appendChild( renderer.domElement );
+
+	var f = f.toString().replace( /Math./gi, '' );
+	var fSource = f.split( '\n' );
+	fSource.unshift( 'float f( float v ) {' ); 
+	fSource.push( '}' );
+	var fsSourceWithFunction = fsSource;
+	fsSourceWithFunction = fsSourceWithFunction.replace( '\// EVAL FUNCTION GOES HERE', fSource.join( '\n' ) );
+
+	scene = new THREE.Scene();
+	shader = new THREE.RawShaderMaterial( {
+		uniforms: {
+			tInput: { type: 't', value: null },
+			value: { type: 'fv1', value: [] },
+			size: { type: 'f', value: s }
+		},
+		vertexShader: vsSource, 
+		fragmentShader: fsSourceWithFunction,
+		transparent: false
+	} );
+
+	//shader = new THREE.MeshNormalMaterial( { side: THREE.DoubleSide })
+	quad = new THREE.Mesh( new THREE.PlaneBufferGeometry( s, s ), shader );
+	scene.add( quad );
+
+	var result = createRT( s, s );
+
+	shader.uniforms.tInput.value = new THREE.DataTexture( buffer, s, s, THREE.RGBAFormat, THREE.UnsignedByteType );
+	shader.uniforms.tInput.value.minFilter = THREE.NearestFilter;
+	shader.uniforms.tInput.value.magFilter = THREE.NearestFilter;
+	shader.uniforms.tInput.value.needsUpdate = true;
+	
+	console.timeEnd( 'setup' );
+
+	console.time( 'run' );
+	renderer.render( scene, camera, result );
+	console.timeEnd( 'run' );
+
+	console.time( 'fetch' );
+	var pixels = new Uint8Array(4 * s * s);
+	var gl = renderer.context;
+	var framebuffer = result.__webglFramebuffer;
+	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);        
+	gl.viewport(0, 0, s, s);
+	gl.readPixels(0, 0, s, s, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+	//console.log( 'Uint8Array', pixels );
+	var v = new Float32Array( pixels.buffer );
+	//console.log( v )
+	//console.log( 'Float32Array', v );
+	console.timeEnd( 'fetch' );
+
+	return v;
+	
+}
+
+var original = new Float32Array( s * s );
+var base = []
+var buffer;
+
+function init() {
+
+	var gl = document.createElement( 'canvas' ).getContext( 'webgl' );
+	var maxSize = gl.getParameter( gl.MAX_TEXTURE_SIZE );
+	s = Math.min( s, maxSize );
+
+	console.log( 'MAX_TEXTURE_SIZE ' + maxSize );
+
+	// 64-bit integer
+	// Double-precision floating-point format
+
+	var ptr = 0;
+	for( var y = 0; y < s; y++ ) {
+		for( var x = 0; x < s; x++ ) {
+			var val = ( 1 - 2 * Math.random() ) * 1000;
+			original[ ptr ] = val;
+			base.push( val );
+			ptr++;
+		}
+	}
+
+	buffer = new Uint8Array( original.buffer );
+
+	return;
+	//console.log( 'Float32Array', buffer );
+	console.log( 'Uint8Array', buffer );
+
+	console.log( 'Running with ' + s * s + ' floats' );
+
+	console.log( 'Running CPU: ( v - 3. ) * v * 10. + 2.' );
+	/*var res = [];
+	for( var j = 0; j < base.length; j++ ) {
+		res.push( Math.sqrt( base[ j ] ) );
+	}*/
+
+	function evalFunction( v ) {
+		return v;//Math.abs( Math.sqrt( v ) ) + 180. * Math.sin( v ) + 240. * Math.cos( 2. * v ); //( v - 3. ) * v * 10. + 2.;
+	}
+
+	console.time( 'run' );
+	res = base.map( evalFunction );
+	//console.log( res )
+	console.timeEnd( 'run' );
+	//console.log( res );
+
+	console.log( 'Running GPU: ( v - 3. ) * v * 10. + 2.' );
+
+	ArrayGPUMap( buffer, evalFunction );
+
+	console.log( 'Done' );
+
+}
+
+function onWindowResize() {
+
+	var w = s,
+	 	h = s;
+	renderer.setSize( w, h );
+	renderer.domElement.style.width = '100%';
+	renderer.domElement.style.height = '100%';
+	camera.projectionMatrix.makeOrthographic( w / - 2, w / 2, h / 2, h / - 2, camera.near, camera.far );
+	if( quad ) quad.scale.set( s, s, 1 );
+
+}
+
+function showMessage( msg ) {
+
+	message.textContent = msg;
+
+}
+
+var textarea = document.getElementById( 'codeInput' );
+var output = document.getElementById( 'output' );
+
+console.log = function() {
+
+	var args = Array.prototype.slice.call(arguments);
+	p = document.createElement( 'p' );
+	p.textContent = args.join( ', ' );
+	output.appendChild( p );
+}
+
+if( !window.performance ) {
+	window.performance = {
+		now: function() { return Date.now() }
+	}
+}
+
+var timers = {}
+console.time = function( id  ){
+
+	timers[ id ] = window.performance.now();
+
+}
+
+console.timeEnd = function( id ) {
+
+	var t = window.performance.now() - timers[ id ];
+	console.log( id + ': ' + t.toFixed( 2 ) + 'ms' ) ;
+
+}
+
+document.getElementById( 'executeBtn' ).addEventListener( 'click', function() {
+
+	var code = textarea.value;
+
+	console.log( '----- NEW RUN -----' );
+	console.log( 'Running with ' + s * s + ' floats' );
+	console.log( 'Function: ' + code );
+
+	var evalFunction = Function( 'v', code );
+
+	console.log( '-' );
+	console.log( 'Running CPU:' );
+	console.time( 'runCPU' );
+	var resCPU = base.map( evalFunction );
+	console.timeEnd( 'runCPU' );
+
+	console.log( '-' );
+	console.log( 'Running GPU:' );
+	console.time( 'runGPU' );
+	var resGPU = ArrayGPUMap( buffer, code );
+	console.timeEnd( 'runGPU' );
+	console.log( '-' );
+	console.log( 'Check: ' );
+	console.log( 'CPU: ' + base[ 0 ] + ' / ' + resCPU[ 0 ] );
+	console.log( 'GPU: ' + original[ 0 ] + ' / ' + resGPU[ 0 ] );
+
+} );
+
+</script>
+	
+	</body>
+</html>

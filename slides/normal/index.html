@@ -1,0 +1,39 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Shaders! ScotlandJS 2015</title>
+		<style>
+			*{ box-sizign: border-box; margin: 0; padding: 0; background-color: black;}
+		</style>
+		<script src="three.min.js" ></script>
+	</head>
+	<body>
+	<script>
+
+	var scene = new THREE.Scene();
+	var aspectRatio = window.innerWidth / window.innerHeight;
+	var camera = new THREE.PerspectiveCamera( 75, aspectRatio, 0.1, 1000 );
+
+	var renderer = new THREE.WebGLRenderer( { antialias: true });
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	document.body.appendChild( renderer.domElement );
+
+	var geometry = new THREE.BoxGeometry( 1, 1, 1 );
+	var material = new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'flag.png' )});
+	var cube = new THREE.Mesh( geometry, material );
+	scene.add( cube );
+
+	camera.position.set( 1,1,1 );
+	camera.lookAt( scene.position );
+
+	function render() {
+		cube.rotation.y += .01;
+		requestAnimationFrame( render );
+		renderer.render( scene, camera );
+	}
+
+	render();
+
+		</script>
+	</body>
+</html>
