@@ -39,6 +39,8 @@
 			textarea{ position: absolute; left: 0; top: 50px; right: 50%; bottom: 0; width: 50%; padding: 20px; height: calc( 100% - 50px );}
 			#output{ position: absolute;left: 50%; right: 0; top: 50px; bottom: 0; padding: 20px; overflow: auto;}
 			#executeBtn{ position: absolute; left: 15px; top: 15px;}
+			#output h1{ font-weight: 800; margin-bottom: 1em;}
+			#output ul{ margin: 1em 0; padding-left: 40px;}
 		</style>
 	</head>
 	<body>
@@ -46,7 +48,16 @@
 		<textarea id="codeInput" ></textarea>
 
 		<input type="button" id="executeBtn" value="Run" />
-		<div id="output" ></div>
+		<div id="output" >
+		<h1>Float32Array.map on the GPU</h1>
+		<p>Use commands that can be executed on both the CPU and the GPU. The input value is "v", the functions Math.* are automatically translated to GLSL. Examples:</p>
+		<ul>
+			<li>return v;</li>
+			<li>return Math.sqrt( v );</li>
+			<li>return Math.sqrt( v ) * Math.sin( 10. * v ) / Math.cos( v );</li>
+		</ul>
+		<p>Loading...</p><br/>
+		</div>
 
 		<script src="js/three.min.js"></script>
 		<script src="js/AugmentedCompileShader.js"></script>
@@ -273,6 +284,7 @@ function init() {
 	s = Math.min( s, maxSize );
 
 	console.log( 'MAX_TEXTURE_SIZE ' + maxSize );
+	console.log( 'Ready' );
 
 	// 64-bit integer
 	// Double-precision floating-point format
