@@ -4,6 +4,9 @@ scotlandjs-2015
 #Getting started with three.js and WebGL#
 WebGL shaders and GPU computing presentation for ScotlandJS 2015
 
+[Slides](http://www.clicktorelease.com/talks/scotlandjs-2015/) | 
+[Demo](http://www.clicktorelease.com/talks/scotlandjs-2015/demo)
+
 About
 -----
 
